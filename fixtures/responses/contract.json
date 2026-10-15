@@ -1,0 +1,8 @@
+{"document_type":"contract","fields":[
+ {"name":"document_number","value":"AGR-2026-0007","page":1,"quote":"Agreement number: AGR-2026-0007","confidence":0.98},
+ {"name":"party_a","value":"Cedar Example Studio","page":1,"quote":"Provider: Cedar Example Studio","confidence":0.98},
+ {"name":"party_b","value":"Meadow Demo Labs","page":1,"quote":"Customer: Meadow Demo Labs","confidence":0.98},
+ {"name":"effective_date","value":"2026-10-05","page":1,"quote":"Effective date: 2026-10-05","confidence":0.96},
+ {"name":"currency","value":"USD","page":1,"quote":"Currency: USD","confidence":0.98},
+ {"name":"total","value":"7500.00","page":1,"quote":"Total contract value: 7500.00","confidence":0.98}
+]}

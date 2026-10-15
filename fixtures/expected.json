@@ -1,0 +1,4 @@
+{
+  "synthetic-invoice.pdf": {"document_type":"invoice","fields":{"document_number":"INV-2026-0042","party_a":"Cedar Example Studio","party_b":"Meadow Demo Labs","effective_date":"2026-10-01","due_date":"2026-10-31","currency":"USD","total":"2400.00"}},
+  "synthetic-contract.pdf": {"document_type":"contract","fields":{"document_number":"AGR-2026-0007","party_a":"Cedar Example Studio","party_b":"Meadow Demo Labs","effective_date":"2026-10-05","currency":"USD","total":"7500.00"}}
+}

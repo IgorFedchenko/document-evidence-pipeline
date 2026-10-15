@@ -1,0 +1,57 @@
+name: CI
+on: [push, pull_request, workflow_dispatch]
+permissions:
+  contents: read
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      weaviate:
+        image: semitechnologies/weaviate:1.38.2
+        ports: ['8096:8080']
+        env:
+          AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED: 'true'
+          DEFAULT_VECTORIZER_MODULE: none
+          CLUSTER_HOSTNAME: ci
+          DISABLE_TELEMETRY: 'true'
+          GOMAXPROCS: '2'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with: {version: '0.9.2', python-version: '3.12', enable-cache: true}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22', cache: npm, cache-dependency-path: frontend/package-lock.json}
+      - name: Install local OCR and dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y tesseract-ocr
+          uv sync --frozen --extra dev
+          npm ci --prefix frontend --no-fund --no-audit
+      - name: Lint and gold extraction tests (recorded LLM responses, real OCR)
+        env: {TEST_WEAVIATE_URL: 'http://localhost:8096'}
+        run: |
+          uv run ruff check backend scripts tests
+          uv run pytest -q --junitxml=test-results/python.xml
+      - name: Typecheck and build React
+        run: npm run build --prefix frontend
+      - name: Browser acceptance against real API, OCR, worker and Weaviate
+        env: {PYTHONPATH: backend, TEST_WEAVIATE_URL: 'http://localhost:8096'}
+        run: |
+          cd frontend && npx playwright install --with-deps chromium && cd ..
+          mkdir -p docs/screenshots
+          uv run python scripts/ci_seed.py > /tmp/evidence-ci.log 2>&1 &
+          for i in $(seq 1 30); do curl -fsS http://localhost:8016/api/health && break || sleep 1; done
+          npm run e2e --prefix frontend
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: acceptance-evidence
+          path: |
+            test-results/
+            frontend/test-results/
+            frontend/playwright-report/
+            docs/screenshots/
