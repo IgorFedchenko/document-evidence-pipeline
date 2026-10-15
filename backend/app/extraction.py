@@ -97,14 +97,16 @@ def ground(candidate: Candidate, pages: dict, threshold: float) -> dict:
                 break
     supported = supported and bool(boxes)
     # Permit separator normalization for money, not arbitrary hallucinated values.
-    value_supported = normalized(candidate.value) in quote
-    if candidate.name == "total":
-        value_supported = candidate.value in quote.replace(",", "")
-    supported = supported and value_supported
     try:
         validate_value(candidate.name, candidate.value)
+        if candidate.name == "total":
+            amounts = re.findall(r"(?<![\w.])-?\d[\d,]*(?:\.\d+)?(?![\w.])", quote)
+            value_supported = any(Decimal(amount.replace(",", "")) == Decimal(candidate.value) for amount in amounts)
+        else:
+            value_supported = bool(re.search(r"(?<!\w)" + re.escape(normalized(candidate.value)) + r"(?!\w)", quote))
     except ValueError:
-        supported = False
+        value_supported = False
+    supported = supported and value_supported
     confidence = min(candidate.confidence, min(confidences, default=0)) if supported else 0
     return {"name": candidate.name, "value": candidate.value, "confidence": confidence,
             "page": candidate.page if page else None, "quote": candidate.quote if supported else "",
