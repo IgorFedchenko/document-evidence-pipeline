@@ -14,7 +14,8 @@ COPY --from=ghcr.io/astral-sh/uv:0.9.2 /uv /usr/local/bin/uv
 RUN uv sync --frozen --no-dev
 COPY backend/ ./backend/
 COPY --from=frontend /ui/dist ./static/
-RUN useradd --create-home --uid 10001 app && mkdir -p /app/data /home/app/.cache && chown -R app:app /app
+RUN useradd --create-home --uid 10001 app && mkdir -p /app/data /home/app/.cache \
+    && chown -R app:app /app /home/app/.cache
 USER app
 ENV PATH="/app/.venv/bin:$PATH" PYTHONPATH=/app/backend DATA_DIR=/app/data \
     OMP_NUM_THREADS=2 TOKENIZERS_PARALLELISM=false
