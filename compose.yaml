@@ -58,7 +58,7 @@ services:
       retries: 30
     restart: unless-stopped
   ollama:
-    image: ollama/ollama:0.12.3
+    image: document-evidence-ollama:local
     environment:
       OLLAMA_NUM_PARALLEL: 1
       OLLAMA_MAX_LOADED_MODELS: 1
@@ -73,7 +73,7 @@ services:
       retries: 30
     restart: unless-stopped
   model-init:
-    image: ollama/ollama:0.12.3
+    image: document-evidence-ollama:local
     environment: {OLLAMA_HOST: 'http://ollama:11434'}
     entrypoint: [ollama, pull]
     command: ["${OLLAMA_MODEL:-qwen2.5:1.5b}"]

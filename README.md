@@ -21,7 +21,7 @@ internet connection for the initial image/model downloads. No LLM API key, subsc
 account is needed. CPU inference is intentionally limited to two threads per service.
 
 ```sh
-git clone git@github.com:IgorFedchenko/document-evidence-pipeline.git
+git clone https://github.com/IgorFedchenko/document-evidence-pipeline.git
 cd document-evidence-pipeline
 ./scripts/start.sh
 ```
@@ -31,7 +31,9 @@ Open **http://localhost:8016**. Upload `fixtures/documents/synthetic-invoice.pdf
 Select a field to highlight its source words; edit a value and choose **Verify field**. Upload the
 same file again to see deduplication. `needs-review.pdf` deliberately omits required fields.
 
-The first start downloads the free `qwen2.5:1.5b` model (~1 GB). The first indexing request downloads
+The first start downloads the official Ollama release archive (its SHA-256 is pinned and verified),
+retains only CPU libraries in a small runtime image, and downloads the free `qwen2.5:1.5b` model (~1 GB).
+GPU/CUDA libraries are excluded. The first indexing request downloads
 `BAAI/bge-small-en-v1.5` ONNX weights; later runs use persistent caches. Model inference can take
 several minutes on a CPU. The document list shows queued, OCR, extraction, indexing and review states.
 

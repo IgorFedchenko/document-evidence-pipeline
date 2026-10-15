@@ -11,6 +11,7 @@ if ! docker buildx inspect document-evidence-builder >/dev/null 2>&1; then
 fi
 # A dedicated BuildKit service caps the work executed by the Docker daemon too.
 docker buildx build --builder document-evidence-builder --load -t document-evidence:local .
+docker buildx build --builder document-evidence-builder --load -f Dockerfile.ollama -t document-evidence-ollama:local .
 bash scripts/compose.sh up --no-build -d --wait --wait-timeout 900
 printf '\nWorkspace: http://localhost:%s\n' "${APP_PORT:-8016}"
 printf 'Upload synthetic files from fixtures/documents/. First AI request may take a few minutes.\n'
