@@ -38,9 +38,10 @@ class Embedder:
 
 def chunks(page: dict):
     # Bound model context and preserve page boundaries for every citation.
-    words = page["text"].split()
+    # Keep original line breaks so an answer can cite a concise OCR line instead of the whole page.
+    words = re.findall(r"\S+\s*", page["text"])
     for i in range(0, len(words), 180):
-        text = " ".join(words[i:i + 220])
+        text = "".join(words[i:i + 220]).strip()
         if text:
             yield i // 180, text
 

@@ -1,4 +1,5 @@
 import io
+import threading
 import warnings
 from dataclasses import dataclass
 from pathlib import Path
@@ -10,6 +11,8 @@ from PIL import Image
 from app.config import Settings
 
 Image.MAX_IMAGE_PIXELS = 16_000_000
+# PDFium is not thread-safe, even for separate documents. API upload threads share this process.
+_PDF_LOCK = threading.RLock()
 
 
 @dataclass
@@ -25,12 +28,13 @@ def inspect_file(path: Path, settings: Settings) -> int:
     with path.open("rb") as source:
         header = source.read(8)
     if header.startswith(b"%PDF-"):
-        with pdfium.PdfDocument(path) as pdf:
+        with _PDF_LOCK, pdfium.PdfDocument(path) as pdf:
             count = len(pdf)
             if not 1 <= count <= settings.max_pages:
                 raise ValueError(f"Document must contain 1–{settings.max_pages} pages")
             for page in pdf:
                 width, height = page.get_size()
+                page.close()
                 if width <= 0 or height <= 0 or width * height * 4 > Image.MAX_IMAGE_PIXELS:
                     raise ValueError("Page dimensions exceed the rendering limit")
             return count
@@ -54,7 +58,7 @@ def render_page(path: Path, number: int) -> Image.Image:
     with path.open("rb") as source:
         header = source.read(5)
     if header == b"%PDF-":
-        with pdfium.PdfDocument(path) as pdf:
+        with _PDF_LOCK, pdfium.PdfDocument(path) as pdf:
             page = pdf[number - 1]
             bitmap = page.render(scale=2)
             image = bitmap.to_pil().convert("RGB").copy()

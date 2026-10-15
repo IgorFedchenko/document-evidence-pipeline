@@ -22,6 +22,8 @@ test('upload scan, inspect evidence, review a field, ask and follow a citation',
   await expect(page.locator('.citation').first()).toContainText('2400.00', { timeout: 120_000 })
   await page.locator('.citation button').first().click()
   await expect(page.getByText('Page 1 of 1')).toBeVisible()
+  await page.getByRole('button', { name: /Total amount/ }).click()
+  await page.evaluate(() => window.scrollTo(0, 0))
   await page.screenshot({ path: '../docs/screenshots/workspace.png', fullPage: true })
   await page.getByLabel('Upload files').setInputFiles(file)
   await expect(page.getByRole('status')).toContainText('duplicate')

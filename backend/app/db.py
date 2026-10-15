@@ -86,6 +86,8 @@ def claim(settings: Settings):
 
 def document_view(db, doc):
     result = dict(doc)
+    completed = db.execute("SELECT count(*) FROM extractions WHERE document_id=?", (doc["id"],)).fetchone()[0]
+    result["extracted_pages"] = min(completed * 2, doc["page_count"])
     result["fields"] = []
     for row in db.execute("SELECT * FROM fields WHERE document_id=? ORDER BY name", (doc["id"],)):
         field = dict(row)
