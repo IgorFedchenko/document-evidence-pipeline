@@ -31,7 +31,10 @@ class Embedder:
             return vectors
         if self.model is None:
             from fastembed import TextEmbedding
-            self.model = TextEmbedding(self.settings.embedding_model, threads=2)
+            self.model = TextEmbedding(
+                self.settings.embedding_model, threads=2,
+                cache_dir=str(self.settings.embedding_cache_dir),
+            )
         function = self.model.query_embed if query else self.model.passage_embed
         return [vector.tolist() for vector in function(texts)]
 
@@ -47,19 +50,22 @@ def chunks(page: dict):
 
 
 class WeaviateIndex:
-    def __init__(self, settings: Settings, embedder=None):
+    def __init__(self, settings: Settings, embedder=None, collection: str = COLLECTION):
+        if not re.fullmatch(r"[A-Z][A-Za-z0-9_]{0,127}", collection):
+            raise ValueError("Invalid Weaviate collection name")
         self.settings = settings
         self.embedder = embedder or Embedder(settings)
+        self.collection = collection
 
     def ensure_schema(self):
         with httpx.Client(base_url=self.settings.weaviate_url, timeout=60) as client:
-            response = client.get(f"/v1/schema/{COLLECTION}")
+            response = client.get(f"/v1/schema/{self.collection}")
             if response.status_code == 200:
                 return
             if response.status_code != 404:
                 response.raise_for_status()
             response = client.post("/v1/schema", json={
-                "class": COLLECTION, "vectorizer": "none",
+                "class": self.collection, "vectorizer": "none",
                 "properties": [
                     {"name": "documentId", "dataType": ["text"], "tokenization": "field"},
                     {"name": "filename", "dataType": ["text"]},
@@ -69,7 +75,7 @@ class WeaviateIndex:
             })
             if response.status_code not in {200, 201}:
                 # Another worker may have created the collection first.
-                client.get(f"/v1/schema/{COLLECTION}").raise_for_status()
+                client.get(f"/v1/schema/{self.collection}").raise_for_status()
 
     def index(self, document: dict, pages: list[dict]):
         self.ensure_schema()
@@ -79,22 +85,22 @@ class WeaviateIndex:
                 vectors = self.embedder.embed([text for _, text in passages]) if passages else []
                 for (ordinal, text), vector in zip(passages, vectors, strict=True):
                     object_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"{document['id']}:{page['number']}:{ordinal}"))
-                    body = {"class": COLLECTION, "id": object_id, "vector": vector,
+                    body = {"class": self.collection, "id": object_id, "vector": vector,
                             "properties": {"documentId": document["id"], "filename": document["filename"],
                                            "page": page["number"], "text": text}}
-                    exists = client.head(f"/v1/objects/{COLLECTION}/{object_id}")
+                    exists = client.head(f"/v1/objects/{self.collection}/{object_id}")
                     if exists.status_code == 404:
                         response = client.post("/v1/objects", json=body)
                     else:
                         exists.raise_for_status()
-                        response = client.put(f"/v1/objects/{COLLECTION}/{object_id}", json=body)
+                        response = client.put(f"/v1/objects/{self.collection}/{object_id}", json=body)
                     response.raise_for_status()
 
     def search(self, question: str, limit: int = 5):
         vector = self.embedder.embed([question], query=True)[0]
         # All dynamic GraphQL strings use JSON encoding; no string interpolation of raw input.
         query = (
-            f"{{Get{{{COLLECTION}(hybrid:{{query:{json.dumps(question)},vector:{json.dumps(vector)},"
+            f"{{Get{{{self.collection}(hybrid:{{query:{json.dumps(question)},vector:{json.dumps(vector)},"
             f"alpha:0.5}},limit:{limit}){{documentId filename page text _additional{{score}}}}}}}}"
         )
         with httpx.Client(base_url=self.settings.weaviate_url, timeout=60) as client:
@@ -103,7 +109,7 @@ class WeaviateIndex:
             payload = response.json()
             if payload.get("errors"):
                 raise RuntimeError("Search index is not ready")
-            return payload["data"]["Get"][COLLECTION]
+            return payload["data"]["Get"][self.collection]
 
 
 def evidence_answer(question: str, hits: list[dict], allowed_ids: set[str]):

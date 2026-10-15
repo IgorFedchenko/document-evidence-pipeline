@@ -12,6 +12,7 @@ class Settings(BaseSettings):
     extractor: str = "ollama"
     embedding_model: str = "BAAI/bge-small-en-v1.5"
     embedding_mode: str = "fastembed"
+    embedding_cache_dir: Path = Path.home() / ".cache" / "fastembed"
     ocr_provider: str = "tesseract"
     ocr_language: str = "eng"
     allow_paid_ocr: bool = False
