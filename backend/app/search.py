@@ -81,9 +81,12 @@ class WeaviateIndex:
                     body = {"class": COLLECTION, "id": object_id, "vector": vector,
                             "properties": {"documentId": document["id"], "filename": document["filename"],
                                            "page": page["number"], "text": text}}
-                    response = client.put(f"/v1/objects/{COLLECTION}/{object_id}", json=body)
-                    if response.status_code == 404:
+                    exists = client.head(f"/v1/objects/{COLLECTION}/{object_id}")
+                    if exists.status_code == 404:
                         response = client.post("/v1/objects", json=body)
+                    else:
+                        exists.raise_for_status()
+                        response = client.put(f"/v1/objects/{COLLECTION}/{object_id}", json=body)
                     response.raise_for_status()
 
     def search(self, question: str, limit: int = 5):
