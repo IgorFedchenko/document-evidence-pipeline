@@ -9,6 +9,7 @@ class Settings(BaseSettings):
     weaviate_url: str = "http://localhost:8096"
     ollama_url: str = "http://localhost:11436"
     ollama_model: str = "qwen2.5:1.5b"
+    include_schema_in_prompt: bool = True
     extractor: str = "ollama"
     embedding_model: str = "BAAI/bge-small-en-v1.5"
     embedding_mode: str = "fastembed"
