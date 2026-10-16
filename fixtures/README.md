@@ -4,3 +4,9 @@ require OCR. The PNG exercises scan upload. `needs-review.pdf` omits required fi
 
 `expected.json` is the human-authored gold set. `responses/` contains manually authored schema-valid
 model responses for deterministic tests, not a claim about live model accuracy. Fixtures are MIT licensed.
+
+The default recorded demo reuses those authored responses and accepts only byte-identical files from
+`documents/`. It runs real Tesseract and validates quotes against the resulting OCR. These recordings
+are separate from the historical real-model result (11/13 expected fields); they do not reproduce or
+improve that measurement. Regenerating fixtures changes the supported demo bytes and may require
+reviewing authored quotes and expected values for consistency.

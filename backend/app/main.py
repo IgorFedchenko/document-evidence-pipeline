@@ -56,7 +56,9 @@ def create_app(settings: Settings | None = None, index=None):
                 return Response("Origin rejected", status_code=403)
         if request.url.path.startswith("/api/") and request.url.path not in {"/api/health", "/api/session"}:
             if settings.access_token:
-                supplied = request.cookies.get("evidence_session", "") or request.headers.get("x-access-token", "")
+                supplied = request.cookies.get("evidence_session", "") or request.headers.get(
+                    "x-access-token", ""
+                )
                 if not hmac.compare_digest(supplied, settings.access_token):
                     return Response("Access token required", status_code=401)
         response = await call_next(request)
@@ -72,8 +74,13 @@ def create_app(settings: Settings | None = None, index=None):
 
     @app.get("/api/health")
     def health():
-        return {"status": "ok", "version": "0.1.0", "extractor": settings.extractor,
-                "embeddings": settings.embedding_mode, "ocr": settings.ocr_provider}
+        return {
+            "status": "ok",
+            "version": "0.1.0",
+            "extractor": settings.extractor,
+            "embeddings": settings.embedding_mode,
+            "ocr": settings.ocr_provider,
+        }
 
     @app.post("/api/session")
     def login(body: Login, response: Response):
@@ -85,7 +92,10 @@ def create_app(settings: Settings | None = None, index=None):
     @app.get("/api/documents")
     def documents():
         with connect(settings) as db:
-            return [document_view(db, row) for row in db.execute("SELECT * FROM documents ORDER BY created_at DESC LIMIT 1000")]
+            return [
+                document_view(db, row)
+                for row in db.execute("SELECT * FROM documents ORDER BY created_at DESC LIMIT 1000")
+            ]
 
     @app.post("/api/documents", status_code=201)
     def upload(file: UploadFile):
@@ -105,6 +115,13 @@ def create_app(settings: Settings | None = None, index=None):
                 if length == 0:
                     raise HTTPException(422, "Empty file")
                 sha = digest.hexdigest()
+                if settings.extractor == "recorded":
+                    from app.recorded import supported_digest
+
+                    if not supported_digest(sha):
+                        raise HTTPException(
+                            422, "Recorded demo accepts only the bundled synthetic fixture files"
+                        )
                 with connect(settings) as db:
                     existing = db.execute("SELECT * FROM documents WHERE sha256=?", (sha,)).fetchone()
                     if existing:
@@ -112,7 +129,9 @@ def create_app(settings: Settings | None = None, index=None):
                 try:
                     count = inspect_file(path, settings)
                 except Exception as exc:
-                    raise HTTPException(422, "Unreadable, encrypted, oversized or unsupported document") from exc
+                    raise HTTPException(
+                        422, "Unreadable, encrypted, oversized or unsupported document"
+                    ) from exc
                 doc_id = str(uuid.uuid4())
                 folder = settings.data_dir / "documents" / doc_id
                 folder.mkdir(parents=True)
@@ -121,13 +140,18 @@ def create_app(settings: Settings | None = None, index=None):
                 try:
                     with connect(settings) as db:
                         db.execute("BEGIN IMMEDIATE")
-                        if db.execute("SELECT count(*) FROM documents").fetchone()[0] >= settings.max_documents:
+                        if (
+                            db.execute("SELECT count(*) FROM documents").fetchone()[0]
+                            >= settings.max_documents
+                        ):
                             raise HTTPException(429, "Local document quota reached")
                         db.execute(
                             "INSERT INTO documents(id,sha256,filename,page_count,created_at) VALUES (?,?,?,?,?)",
                             (doc_id, sha, filename, count, time.time()),
                         )
-                        doc = document_view(db, db.execute("SELECT * FROM documents WHERE id=?", (doc_id,)).fetchone())
+                        doc = document_view(
+                            db, db.execute("SELECT * FROM documents WHERE id=?", (doc_id,)).fetchone()
+                        )
                 except sqlite3.IntegrityError:
                     shutil.rmtree(folder)
                     with connect(settings) as db:
@@ -150,8 +174,12 @@ def create_app(settings: Settings | None = None, index=None):
             if row is None:
                 raise HTTPException(404, "Document not found")
             result = document_view(db, row)
-            result["pages"] = [{**dict(page), "words": json.loads(page["words"])} for page in
-                               db.execute("SELECT * FROM pages WHERE document_id=? ORDER BY number", (str(doc_id),))]
+            result["pages"] = [
+                {**dict(page), "words": json.loads(page["words"])}
+                for page in db.execute(
+                    "SELECT * FROM pages WHERE document_id=? ORDER BY number", (str(doc_id),)
+                )
+            ]
             return result
 
     @app.get("/api/documents/{doc_id}/pages/{number}/image")
@@ -166,8 +194,11 @@ def create_app(settings: Settings | None = None, index=None):
     @app.post("/api/documents/{doc_id}/retry")
     def retry(doc_id: uuid.UUID):
         with connect(settings) as db:
-            changed = db.execute("UPDATE documents SET status='queued',stage='queued',attempts=0,available_at=0,error=NULL "
-                                 "WHERE id=? AND status='failed'", (str(doc_id),)).rowcount
+            changed = db.execute(
+                "UPDATE documents SET status='queued',stage='queued',attempts=0,available_at=0,error=NULL "
+                "WHERE id=? AND status='failed'",
+                (str(doc_id),),
+            ).rowcount
             if not changed:
                 raise HTTPException(409, "Only failed documents can be retried")
         return {"ok": True}
@@ -180,27 +211,42 @@ def create_app(settings: Settings | None = None, index=None):
             raise HTTPException(422, str(exc)) from exc
         with connect(settings) as db:
             db.execute("BEGIN IMMEDIATE")
-            row = db.execute("SELECT fields.*,documents.status FROM fields JOIN documents ON documents.id=fields.document_id "
-                             "WHERE document_id=? AND name=?", (str(doc_id), name)).fetchone()
+            row = db.execute(
+                "SELECT fields.*,documents.status FROM fields JOIN documents ON documents.id=fields.document_id "
+                "WHERE document_id=? AND name=?",
+                (str(doc_id), name),
+            ).fetchone()
             if not row:
                 raise HTTPException(404, "Field not found")
             if row["status"] not in {"ready", "needs_review"}:
                 raise HTTPException(409, "Wait until processing completes")
             if row["version"] != body.version:
                 raise HTTPException(409, "Field changed; reload before reviewing")
-            db.execute("INSERT INTO review_events(document_id,field_name,old_value,new_value,created_at) VALUES(?,?,?,?,?)",
-                       (str(doc_id), name, row["value"], body.value, time.time()))
+            db.execute(
+                "INSERT INTO review_events(document_id,field_name,old_value,new_value,created_at) VALUES(?,?,?,?,?)",
+                (str(doc_id), name, row["value"], body.value, time.time()),
+            )
             # Confidence and evidence remain machine provenance, not a fabricated 100% score.
-            db.execute("UPDATE fields SET value=?,needs_review=0,reviewed=1,version=version+1 WHERE document_id=? AND name=?",
-                       (body.value, str(doc_id), name))
-            remaining = db.execute("SELECT count(*) FROM fields WHERE document_id=? AND needs_review=1", (str(doc_id),)).fetchone()[0]
-            db.execute("UPDATE documents SET status=? WHERE id=?", ("needs_review" if remaining else "ready", str(doc_id)))
+            db.execute(
+                "UPDATE fields SET value=?,needs_review=0,reviewed=1,version=version+1 WHERE document_id=? AND name=?",
+                (body.value, str(doc_id), name),
+            )
+            remaining = db.execute(
+                "SELECT count(*) FROM fields WHERE document_id=? AND needs_review=1", (str(doc_id),)
+            ).fetchone()[0]
+            db.execute(
+                "UPDATE documents SET status=? WHERE id=?",
+                ("needs_review" if remaining else "ready", str(doc_id)),
+            )
         return {"ok": True}
 
     @app.post("/api/ask")
     def ask(body: Question):
         with connect(settings) as db:
-            allowed = {row[0] for row in db.execute("SELECT id FROM documents WHERE status IN ('ready','needs_review')")}
+            allowed = {
+                row[0]
+                for row in db.execute("SELECT id FROM documents WHERE status IN ('ready','needs_review')")
+            }
         if not allowed:
             return evidence_answer(body.question, [], allowed)
         try:

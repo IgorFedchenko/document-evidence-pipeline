@@ -1,24 +1,27 @@
-# Document Evidence Pipeline
+# Folio · Document Evidence Pipeline
 
-**Turn scanned invoices and contracts into validated data and searchable evidence.**
+### From scanned pages to useful data, with the evidence attached.
 
-A working reference implementation for teams that receive document batches and need structured
-records they can actually verify. Upload image-only PDFs or scans, follow processing progress,
-inspect extracted fields against highlighted page evidence, review uncertain values, and ask
-questions with document-and-page citations.
+Upload an invoice or contract, inspect structured fields beside their source page, correct uncertain
+values, and search for exact excerpts with document-and-page citations. This independent MIT reference
+shows the practical plumbing around document extraction: OCR, durable jobs, validation, review and retrieval.
 
-Python / FastAPI · React / TypeScript · Tesseract · local Ollama · Weaviate · local ONNX embeddings
+**FastAPI · React / TypeScript · Tesseract · SQLite · Weaviate**
 
-> Independent MIT reference implementation by Igor Fedchenko. All examples are synthetic.
-> No employer/client code, data, names or confidential material is included.
+![Recorded fixture demo: document review with page highlights and cited search](docs/screenshots/workspace.png)
 
-![Document review and cited search](docs/screenshots/workspace.png)
+*Actual browser capture against the API, worker, Tesseract and Weaviate. The default demo uses manually
+authored extraction recordings and deterministic hash vectors. It makes no model or cloud calls.*
 
-## Run locally
+![Recorded fixture walkthrough: upload, inspect, review and find cited evidence](docs/screenshots/walkthrough.gif)
 
-Prerequisites: Docker Engine with Compose, approximately 6 GB available RAM, 6 GB disk, and an
-internet connection for the initial image/model downloads. No LLM API key, subscription or cloud
-account is needed. CPU inference is intentionally limited to two threads per service.
+## Try it locally
+
+You need Python 3.12–3.13, [uv](https://docs.astral.sh/uv/), Node.js 22+, Docker with Compose v2, and
+Tesseract with English language data (`brew install tesseract` on macOS, or
+`sudo apt-get install tesseract-ocr` on Ubuntu). Allow about 2 GB RAM for the demo dependencies.
+The first setup needs internet access for packages and the Weaviate image; subsequent runs can reuse
+them. **No API keys, model downloads, cloud account or paid services are needed.**
 
 ```sh
 git clone https://github.com/IgorFedchenko/document-evidence-pipeline.git
@@ -26,144 +29,121 @@ cd document-evidence-pipeline
 ./scripts/start.sh
 ```
 
-Open **http://localhost:8016**. Upload `fixtures/documents/synthetic-invoice.pdf` and
-`synthetic-contract.pdf` using **Upload documents**. Try **What is the total due on the invoice?**
-Select a field to highlight its source words; edit a value and choose **Verify field**. Upload the
-same file again to see deduplication. `needs-review.pdf` deliberately omits required fields.
+Open **http://127.0.0.1:8017**. The server stays in the terminal; Ctrl-C stops it.
 
-The first start downloads the official Ollama release archive (its SHA-256 is pinned and verified),
-retains only CPU libraries in a small runtime image, and downloads the free `qwen2.5:1.5b` model (~1 GB).
-GPU/CUDA libraries are excluded. The first indexing request downloads
-`BAAI/bge-small-en-v1.5` ONNX weights; later runs use persistent caches. Model inference can take
-several minutes on a CPU. The document list shows queued, OCR, extraction, indexing and review states.
+1. Upload `fixtures/documents/synthetic-invoice.pdf` and `synthetic-contract.pdf`.
+2. Select **Total amount** to highlight its original OCR source words.
+3. Edit a value and choose **Verify field**. The original machine score and quote stay visible.
+4. Ask **What is the total due on the invoice?** and follow the citation to its page.
+5. Upload the same file again to see deduplication; try `needs-review.pdf` for missing fields.
+
+The recorded demo accepts only byte-identical bundled fixtures, including the PNG. This deliberate
+scope prevents a different document from receiving a convincing but unrelated recorded response.
+All names, dates and amounts are invented. Use synthetic documents only.
+
+SQLite and page images live in `data/recorded/`; search vectors persist in the dedicated
+`document-evidence-recorded` Compose volume. Both app and vector ports bind to loopback.
 
 ```sh
-docker compose logs --tail=50 worker   # job ids and error types, never document text
-docker compose stop                  # retains local documents, vectors and models
-docker compose down                  # removes containers, retains named volumes
+bash scripts/compose.sh stop          # stop this demo's index; retain its data
+# Optional port overrides, useful alongside another local stack:
+APP_PORT=8027 VECTOR_PORT=8107 ./scripts/start.sh
 ```
 
-Optional settings are documented in [`.env.example`](.env.example); copy to `.env` before changing
-models or setting `ACCESS_TOKEN`. With a token configured, the UI asks for it once and uses an
-HttpOnly, SameSite cookie. Never commit `.env` or credentials. On Studio, `start.sh` automatically
-joins the host's shared heavy-job queue.
+The helper scripts automatically join `studio-heavy-run` when installed on a shared development host.
+An optional workspace token can be set through `ACCESS_TOKEN`; the browser uses an HttpOnly,
+SameSite cookie. See [configuration and optional adapters](docs/architecture.md#runtime-modes).
 
-## Architecture
+## How it works
 
 ```mermaid
 flowchart LR
-  U[React workspace] -->|batch upload| A[FastAPI]
-  A -->|SHA-256 unique key| D[(SQLite WAL / durable jobs)]
-  A --> F[Local document store]
-  D -->|atomic claim + renewable lease| W[Worker]
-  F --> W
-  W --> O[Tesseract OCR / page boxes]
-  O --> L[Ollama / constrained JSON]
-  L --> V[Schema + source validation]
-  V --> R[Human review queue]
-  V --> E[Local BGE ONNX embeddings]
-  E --> I[(Weaviate / hybrid retrieval)]
-  U -->|natural-language question| A
-  I --> A
-  A -->|extractive answer + document/page citations| U
-  R --> U
-  T[AWS Textract adapter / disabled] -. explicit owner opt-in .-> O
+  UI[React workspace] -->|upload + SHA-256| API[FastAPI]
+  API --> DB[(SQLite WAL + durable jobs)]
+  API --> Files[Local document store]
+  DB -->|atomic claim + renewable lease| Worker[Worker]
+  Files --> Worker
+  Worker --> OCR[Tesseract + page boxes]
+  OCR --> Extract[Recorded fixture extractor]
+  Extract --> Validate[Schema + source validation]
+  Validate --> Review[Human review + audit]
+  Validate --> Hash[Hash-vector demo double]
+  Hash --> Index[(Weaviate hybrid retrieval)]
+  UI -->|question| API
+  Index --> API
+  API -->|lexical source excerpts + page citations| UI
+  Review --> UI
+  Local[Optional local Ollama + BGE adapters] -. opt-in alternative .-> Extract
 ```
 
-The API and worker are separate processes. SQLite is the durable queue and system of record;
-Weaviate is a rebuildable search index. OCR pages and each two-page extraction batch are committed
-independently. Documents become searchable only after indexing completes. The worker processes
-one document at a time; uploads remain available while it works.
+The default demo runs real OCR, a real background worker, SQLite persistence and real Weaviate
+upserts/hybrid retrieval. Only extraction and embeddings are doubles. API answers use lexical
+`evidence_answer`: query terms rank OCR lines and excerpts are returned verbatim. The separate
+`OllamaEvidenceSelector` adapter is **not integrated into the API or UI**.
 
-## Extraction and evidence
+The worker checkpoints OCR pages and two-page extraction batches. Failed work retries with bounded
+backoff, then becomes a visible failure with explicit Retry. Content hashes deduplicate uploads;
+deterministic index IDs make upserts repeatable. Review uses optimistic versions and an audit trail.
 
-- Ollama receives a Pydantic JSON schema, not a request for loosely formatted prose. Invoice and
-  contract fields include parties, document number, dates, currency and amount.
-- The server validates decimal totals, dates and currency format, checks that the claimed value
-  occurs in the supporting quote, and finds a matching contiguous OCR word span on the claimed page.
-- Confidence is capped by the weakest supporting OCR word. Missing fields, conflicting values,
-  invalid types, unsupported claims and low scores go to human review. Scores are heuristics,
-  **not calibrated probabilities**.
-- Review uses optimistic versions to prevent lost edits and keeps an audit trail. A human edit
-  does not rewrite the original machine confidence or pretend the source said the new value.
-- Search combines local dense vectors with Weaviate BM25. Answers are **extractive evidence**,
-  not free-form LLM synthesis: every displayed excerpt links to a document and page. The system
-  abstains when it cannot find supporting terms. This trades paraphrase coverage for traceability.
+## What has actually been measured
 
-## Reliability and security decisions
+A historical direct-adapter run at commit `93e347038d2237421e23393ec9abe86115d1be85` used real local
+**qwen2.5:1.5b**, Tesseract, BGE embeddings and Weaviate on the two synthetic development PDFs.
+**11 of 13 expected fields** had correct values, literal OCR quotes and nonempty source boxes.
+Both invoice dates were missing. An extra contract candidate treated a retention duration as a due
+date; validation removed its evidence/score and flagged it for review. The original stricter
+feasibility gate failed. Extraction behavior is retained as measured.
 
-| Concern | Implementation |
+That small development slice is **not** general accuracy, holdout validation, live API/worker/browser
+acceptance or production readiness. The historical standalone model selector returned an exact invoice
+citation; the current API uses the lexical path described above. The screenshots and local acceptance
+use authored recordings and must not be read as a new live-model measurement.
+
+## Engineering notes
+
+| Boundary | Implementation |
 |---|---|
-| Duplicate uploads | Content SHA-256 with a database unique constraint; concurrent uploads converge to one document. |
-| Worker restart | Atomic claims, renewable leases, page checkpoints and cached extraction batches. Expired final leases become visible failures. |
-| Transient failures | Bounded exponential backoff, three attempts, visible error type and explicit Retry. OCR/model results are reused. |
-| Index retries | Deterministic object UUIDs and upserts; interrupted indexing can safely repeat. |
-| Large batches | Up to 400 pages/file, bounded page rendering and two-page extraction windows; sequential files in the upload batch. |
-| Unsafe files | Signature/parser checks, 30 MB file limit, frame/page/pixel limits, UUID storage paths and raster-only preview. |
-| Access | Loopback-only published port; vector database and model service have no published ports. Optional workspace token, same-origin mutations and trusted-host checks. |
-| Browser safety | React text rendering, CSP, no arbitrary HTML, no embedded original PDF execution, no wildcard CORS. |
-| Prompt injection | Document content is untrusted, model has no tools, constrained schema plus independent evidence/type checks. This reduces rather than eliminates extraction errors. |
-| Least privilege | API and worker run as a non-root user with dropped capabilities. No AWS credentials are mounted. |
-| Data | Local persistent volumes; synthetic fixtures only. No document contents in application logs. Initial model downloads contact their registries. |
+| Structured extraction | Pydantic schema; decimal/date/currency checks; claimed value must occur in a contiguous OCR source span. |
+| Review | Missing, conflicting, unsupported or low-score values require attention. Scores are heuristics, not calibrated probabilities. |
+| Human corrections | Save the new value and audit event; keep original machine confidence, quote and boxes. Edited values are not automatically re-grounded. |
+| Durable work | Atomic SQLite claims, renewable leases, page/batch checkpoints, bounded retries and deterministic index upserts. |
+| File safety | Signature/parser checks, 30 MB/file, 400 pages/file, pixel limits, UUID paths and raster previews. |
+| Browser safety | Same-origin mutations, trusted-host checks, CSP, React text rendering and no wildcard CORS. |
+| Local scope | One workspace; loopback ports; no document text in application logs. No employer/client material. |
 
-This is a **single-workspace local reference**, not a multitenant hosted product. Before internet
-deployment add real identity/authorization, HTTPS and secure cookies, ingress request/rate limits,
-malware isolation, retention/deletion policy, backup monitoring and a managed job store. The API's
-health endpoint is liveness, not an assertion that inference/indexing dependencies are healthy.
+Read [architecture](docs/architecture.md), [key decisions](docs/key-decisions.md) and
+[testing](docs/testing.md) for the implementation boundaries and reproducible checks.
 
-## Tests and development
+## Verify locally
+
+After the first start has installed dependencies, stop the app if desired and run:
 
 ```sh
-uv sync --extra dev --python 3.12
-npm ci --prefix frontend
-uv run ruff check backend scripts tests
-uv run pytest -q
-npm run build --prefix frontend
-# With the local stack running and Playwright browsers installed:
-npm run e2e --prefix frontend
+./scripts/verify.sh
 ```
 
-On Studio wrap builds and E2E in `~/.local/bin/studio-heavy-run -- <command>`, or use
-`scripts/verify.sh`. Python tests exercise real Tesseract against image-only gold PDFs, schema and
-source validation, paid-service gating, concurrent deduplication, retries, crash recovery,
-review conflicts, audit and refusal to invent evidence. Model responses in tests are explicitly
-recorded fixtures; no credentials or paid APIs are used.
+This creates a separate temporary Weaviate project and fresh app data, runs the Python suite with real
+OCR and index integration, builds React, and executes Playwright against the real recorded-mode app.
+There are no browser API-route mocks. It stops its own processes/containers and removes only its own
+temporary vector volume. Reports, video and screenshot go outside the repository by default.
+Install Playwright Chromium once if needed: `cd frontend && npx playwright install chromium`.
 
-CI also starts real Weaviate, tests index upserts/hybrid retrieval, builds React, and runs a
-browser flow against the real API, OCR, worker and database. Its model/embedding doubles make the
-run deterministic and inexpensive. **Green CI is not a measurement of live LLM accuracy.**
-The browser flow exercises upload, source highlighting, review, questions, citation navigation,
-duplicate upload, abstention and mobile layout. Screenshots, video, trace and test results are
-uploaded as private workflow artifacts. See [validation evidence](docs/VALIDATION.md).
+GitHub Actions is **manual-only and guarded to public repositories**. It is disabled for this private
+repository; local evidence is the acceptance record. No hosted CI run is claimed.
 
-To regenerate the synthetic gold documents: `uv run python scripts/generate_fixtures.py`.
-For live model evaluation: `PYTHONPATH=backend uv run python scripts/evaluate_live.py` after the
-stack is running. It uploads only these synthetic fixtures and reports field accuracy/grounding;
-it never calls a paid service.
+## Limits
 
-## Optional Textract adapter
+- English printed documents; complex tables, handwriting, multilingual scans and arbitrary document
+  layouts need further evaluation. The schema has seven fields, without line items or legal analysis.
+- The optional small local model can omit fields and propose invalid candidates. Human review is
+  essential. The default recorded demo supports only its bundled synthetic fixture bytes.
+- Lexical answers require vocabulary overlap and can return an irrelevant overlapping excerpt.
+  Exact source text proves provenance, not that the excerpt answers the question correctly.
+- Two-page extraction windows can miss distant relationships. The 400-page input limit is not a
+  throughput SLA; CPU OCR/extraction is sequential.
+- This local reference has no user roles, deletion/export UI, calibrated confidence or tenant isolation.
+  Internet deployment needs authentication/authorization, HTTPS, rate limits, file isolation,
+  retention policy, backups and operational monitoring.
 
-`backend/app/ocr.py` includes the AWS adapter and fake-client tests. It is disabled by default;
-setting `OCR_PROVIDER=textract` without `ALLOW_PAID_OCR=true` fails closed. **Do not enable it
-until the owner approves cost and installs credentials on the host.** Compose does not forward
-AWS credentials. Wire the standard AWS credential chain separately after approval. No cloud LLM
-adapter or API-key workflow is included.
-
-## Limits and tradeoffs
-
-- English printed documents; handwriting, rotated/poor-quality scans, complex tables and
-  multilingual OCR need additional evaluation/configuration. The sample schema does not extract
-  line items, signatures or arbitrary legal obligations.
-- A small local LLM can miss fields or generate unsupported candidates. Unsupported candidates
-  are visible for review and have zero confidence. Human review remains necessary.
-- Two-page extraction windows can miss relationships across distant pages; conflicts require review.
-- A 400-page maximum is an input bound, not a throughput SLA. CPU inference is sequential;
-  hundreds of pages take time. Review confidence and bulk behavior are tested separately from live accuracy.
-- The evidence answer mode requires some query/source vocabulary overlap and is not a general
-  conversational assistant. Dense retrieval alone is not proof that a passage answers a question.
-- SQLite is appropriate for this small local workload. Horizontal workers, lease fencing and
-  production-scale scheduling should move to a dedicated job system.
-- Changing the embedding model/dimension requires rebuilding the vector collection. There is
-  currently no UI for deletion, user roles, export or reindexing.
-
-License: [MIT](LICENSE). Portfolio copy: [docs/PORTFOLIO.md](docs/PORTFOLIO.md).
+Independent work by Igor Fedchenko. Existing contributor/agent attributions are preserved.
+Licensed under [MIT](LICENSE).

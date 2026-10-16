@@ -43,7 +43,16 @@ class RecordedExtractor:
 
 @pytest.fixture
 def settings(tmp_path):
-    result = Settings(data_dir=tmp_path, embedding_mode="hash", max_attempts=2)
+    result = Settings(
+        _env_file=None,
+        data_dir=tmp_path,
+        extractor="ollama",  # Adapter calls are mocked or explicitly injected by each test.
+        embedding_mode="hash",
+        ocr_provider="tesseract",
+        allow_paid_ocr=False,
+        access_token="",
+        max_attempts=2,
+    )
     init_db(result)
     return result
 

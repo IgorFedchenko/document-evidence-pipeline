@@ -1,0 +1,88 @@
+name: document-evidence
+x-app: &app
+  image: document-evidence:local
+  build: .
+  init: true
+  environment: &environment
+    WEAVIATE_URL: http://weaviate:8080
+    OLLAMA_URL: http://ollama:11434
+    OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen2.5:1.5b}
+    EMBEDDING_MODEL: ${EMBEDDING_MODEL:-BAAI/bge-small-en-v1.5}
+    OCR_PROVIDER: ${OCR_PROVIDER:-tesseract}
+    OCR_LANGUAGE: ${OCR_LANGUAGE:-eng}
+    ALLOW_PAID_OCR: ${ALLOW_PAID_OCR:-false}
+    ACCESS_TOKEN: ${ACCESS_TOKEN:-}
+  volumes:
+    - documents:/app/data
+    - embeddings:/home/app/.cache
+  cpus: 2
+  mem_limit: 2g
+  security_opt: [no-new-privileges:true]
+  cap_drop: [ALL]
+services:
+  api:
+    <<: *app
+    ports: ["127.0.0.1:${APP_PORT:-8016}:8016"]
+    depends_on:
+      weaviate: {condition: service_healthy}
+    healthcheck:
+      test: [CMD, curl, -fsS, http://localhost:8016/api/health]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+  worker:
+    <<: *app
+    command: [python, -m, app.worker]
+    depends_on:
+      api: {condition: service_healthy}
+      model-init: {condition: service_completed_successfully}
+    restart: unless-stopped
+  weaviate:
+    image: semitechnologies/weaviate:1.38.2
+    environment:
+      QUERY_DEFAULTS_LIMIT: 10
+      AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED: 'true'
+      PERSISTENCE_DATA_PATH: /var/lib/weaviate
+      DEFAULT_VECTORIZER_MODULE: none
+      CLUSTER_HOSTNAME: local
+      DISABLE_TELEMETRY: 'true'
+      GOMAXPROCS: 2
+    volumes: ["vectors:/var/lib/weaviate"]
+    cpus: 2
+    mem_limit: 1g
+    healthcheck:
+      test: [CMD, wget, -q, --spider, http://localhost:8080/v1/.well-known/ready]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    restart: unless-stopped
+  ollama:
+    image: document-evidence-ollama:local
+    environment:
+      OLLAMA_NUM_PARALLEL: 1
+      OLLAMA_MAX_LOADED_MODELS: 1
+      OLLAMA_NO_CLOUD: 'true'
+    volumes: ["models:/root/.ollama"]
+    cpus: 2
+    mem_limit: 3g
+    healthcheck:
+      test: [CMD, ollama, list]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    restart: unless-stopped
+  model-init:
+    image: document-evidence-ollama:local
+    environment: {OLLAMA_HOST: 'http://ollama:11434'}
+    entrypoint: [ollama, pull]
+    command: ["${OLLAMA_MODEL:-qwen2.5:1.5b}"]
+    depends_on:
+      ollama: {condition: service_healthy}
+    cpus: 1
+    mem_limit: 256m
+volumes:
+  documents:
+  vectors:
+  models:
+  embeddings:
