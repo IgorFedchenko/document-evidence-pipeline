@@ -9,7 +9,9 @@ import httpx
 from app.config import Settings
 
 COLLECTION = "DocumentPassage"
-STOP = set("a an the is are was were what which how much when who to of for in on and does do please me tell".split())
+STOP = set(
+    "a an the is are was were what which how much when who to of for in on and does do please me tell".split()
+)
 
 
 class Embedder:
@@ -19,7 +21,7 @@ class Embedder:
 
     def embed(self, texts: list[str], query=False) -> list[list[float]]:
         if self.settings.embedding_mode == "hash":
-            # Deterministic, offline test double. Never the default for the application.
+            # Deterministic offline demo/test double; this is not a learned embedding.
             vectors = []
             for text in texts:
                 vector = [0.0] * 256
@@ -31,8 +33,10 @@ class Embedder:
             return vectors
         if self.model is None:
             from fastembed import TextEmbedding
+
             self.model = TextEmbedding(
-                self.settings.embedding_model, threads=2,
+                self.settings.embedding_model,
+                threads=2,
                 cache_dir=str(self.settings.embedding_cache_dir),
             )
         function = self.model.query_embed if query else self.model.passage_embed
@@ -44,7 +48,7 @@ def chunks(page: dict):
     # Keep original line breaks so an answer can cite a concise OCR line instead of the whole page.
     words = re.findall(r"\S+\s*", page["text"])
     for i in range(0, len(words), 180):
-        text = "".join(words[i:i + 220]).strip()
+        text = "".join(words[i : i + 220]).strip()
         if text:
             yield i // 180, text
 
@@ -64,15 +68,19 @@ class WeaviateIndex:
                 return
             if response.status_code != 404:
                 response.raise_for_status()
-            response = client.post("/v1/schema", json={
-                "class": self.collection, "vectorizer": "none",
-                "properties": [
-                    {"name": "documentId", "dataType": ["text"], "tokenization": "field"},
-                    {"name": "filename", "dataType": ["text"]},
-                    {"name": "page", "dataType": ["int"]},
-                    {"name": "text", "dataType": ["text"]},
-                ],
-            })
+            response = client.post(
+                "/v1/schema",
+                json={
+                    "class": self.collection,
+                    "vectorizer": "none",
+                    "properties": [
+                        {"name": "documentId", "dataType": ["text"], "tokenization": "field"},
+                        {"name": "filename", "dataType": ["text"]},
+                        {"name": "page", "dataType": ["int"]},
+                        {"name": "text", "dataType": ["text"]},
+                    ],
+                },
+            )
             if response.status_code not in {200, 201}:
                 # Another worker may have created the collection first.
                 client.get(f"/v1/schema/{self.collection}").raise_for_status()
@@ -84,10 +92,20 @@ class WeaviateIndex:
                 passages = list(chunks(page))
                 vectors = self.embedder.embed([text for _, text in passages]) if passages else []
                 for (ordinal, text), vector in zip(passages, vectors, strict=True):
-                    object_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"{document['id']}:{page['number']}:{ordinal}"))
-                    body = {"class": self.collection, "id": object_id, "vector": vector,
-                            "properties": {"documentId": document["id"], "filename": document["filename"],
-                                           "page": page["number"], "text": text}}
+                    object_id = str(
+                        uuid.uuid5(uuid.NAMESPACE_URL, f"{document['id']}:{page['number']}:{ordinal}")
+                    )
+                    body = {
+                        "class": self.collection,
+                        "id": object_id,
+                        "vector": vector,
+                        "properties": {
+                            "documentId": document["id"],
+                            "filename": document["filename"],
+                            "page": page["number"],
+                            "text": text,
+                        },
+                    }
                     exists = client.head(f"/v1/objects/{self.collection}/{object_id}")
                     if exists.status_code == 404:
                         response = client.post("/v1/objects", json=body)
@@ -120,15 +138,28 @@ def evidence_answer(question: str, hits: list[dict], allowed_ids: set[str]):
         if hit["documentId"] not in allowed_ids:
             continue
         sentences = re.split(r"(?<=[.!?])\s+|\n", hit["text"])
-        ranked = sorted(sentences, key=lambda s: len(tokens & set(re.findall(r"\w+", s.lower()))), reverse=True)
+        ranked = sorted(
+            sentences, key=lambda s: len(tokens & set(re.findall(r"\w+", s.lower()))), reverse=True
+        )
         quote = ranked[0][:1200] if ranked else ""
         # No invented fallback when the retrieved passages share no meaningful terms.
         if not quote or not (tokens & set(re.findall(r"\w+", quote.lower()))):
             continue
         if any(c["document_id"] == hit["documentId"] and c["page"] == hit["page"] for c in citations):
             continue
-        citations.append({"id": len(citations) + 1, "document_id": hit["documentId"],
-                          "filename": hit["filename"], "page": hit["page"], "quote": quote})
-    return {"answer": "\n\n".join(f'{c["quote"]} [{c["id"]}]' for c in citations)
-            or "I could not find supporting evidence in the processed documents.",
-            "citations": citations, "mode": "extractive", "question": question}
+        citations.append(
+            {
+                "id": len(citations) + 1,
+                "document_id": hit["documentId"],
+                "filename": hit["filename"],
+                "page": hit["page"],
+                "quote": quote,
+            }
+        )
+    return {
+        "answer": "\n\n".join(f"{c['quote']} [{c['id']}]" for c in citations)
+        or "I could not find supporting evidence in the processed documents.",
+        "citations": citations,
+        "mode": "extractive",
+        "question": question,
+    }

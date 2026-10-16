@@ -1,4 +1,5 @@
 """Evaluate local OCR + live Ollama + real Weaviate on synthetic gold files only."""
+
 import argparse
 import json
 import time
@@ -22,7 +23,9 @@ def main():
         for filename, gold in expected.items():
             start = time.monotonic()
             path = ROOT / "fixtures" / "documents" / filename
-            response = client.post("/api/documents", files={"file": (filename, path.read_bytes(), "application/pdf")})
+            response = client.post(
+                "/api/documents", files={"file": (filename, path.read_bytes(), "application/pdf")}
+            )
             response.raise_for_status()
             doc_id = response.json()["document"]["id"]
             deadline = time.monotonic() + 840
@@ -40,11 +43,17 @@ def main():
             actual = {f["name"]: f["value"] for f in document["fields"]}
             correct = sum(actual.get(name) == value for name, value in gold["fields"].items())
             grounded = sum(bool(f["quote"] and f["boxes"]) for f in document["fields"] if f["value"])
-            result = {"fixture": filename, "document_id": doc_id, "state": document["status"],
-                      "seconds": round(time.monotonic() - start, 2), "correct_fields": correct,
-                      "expected_fields": len(gold["fields"]), "grounded_fields": grounded,
-                      "review_fields": sum(f["needs_review"] for f in document["fields"]),
-                      "actual": actual}
+            result = {
+                "fixture": filename,
+                "document_id": doc_id,
+                "state": document["status"],
+                "seconds": round(time.monotonic() - start, 2),
+                "correct_fields": correct,
+                "expected_fields": len(gold["fields"]),
+                "grounded_fields": grounded,
+                "review_fields": sum(f["needs_review"] for f in document["fields"]),
+                "actual": actual,
+            }
             results.append(result)
             print(json.dumps(result), flush=True)
         response = client.post("/api/ask", json={"question": "What is the total due on the invoice?"})
@@ -55,9 +64,14 @@ def main():
             source = client.get(f"/api/documents/{citation['document_id']}").json()
             page = next(p for p in source["pages"] if p["number"] == citation["page"])
             assert " ".join(citation["quote"].split()) in " ".join(page["text"].split())
-    output = {"mode": "live local Ollama + Tesseract + BGE + Weaviate", "health": health,
-              "documents": results, "citation_count": len(answer["citations"]),
-              "field_accuracy": sum(r["correct_fields"] for r in results) / sum(r["expected_fields"] for r in results)}
+    output = {
+        "mode": "live local Ollama + Tesseract + BGE + Weaviate",
+        "health": health,
+        "documents": results,
+        "citation_count": len(answer["citations"]),
+        "field_accuracy": sum(r["correct_fields"] for r in results)
+        / sum(r["expected_fields"] for r in results),
+    }
     (ROOT / args.output).write_text(json.dumps(output, indent=2) + "\n")
     # Grounding is a terminal check; live model accuracy is measured, not silently assumed perfect.
     assert all(r["grounded_fields"] > 0 for r in results)

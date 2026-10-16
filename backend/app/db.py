@@ -79,7 +79,8 @@ def claim(settings: Settings):
             return None
         db.execute(
             "UPDATE documents SET status='processing',stage='ocr',attempts=attempts+1,"
-            "lease_until=?,error=NULL WHERE id=?", (now + settings.lease_seconds, row["id"]),
+            "lease_until=?,error=NULL WHERE id=?",
+            (now + settings.lease_seconds, row["id"]),
         )
         return dict(db.execute("SELECT * FROM documents WHERE id=?", (row["id"],)).fetchone())
 

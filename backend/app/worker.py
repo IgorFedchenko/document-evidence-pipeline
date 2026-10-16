@@ -31,8 +31,10 @@ class Worker:
         def heartbeat():
             while not heartbeat_stop.wait(20):
                 with connect(self.settings) as db:
-                    db.execute("UPDATE documents SET lease_until=? WHERE id=? AND status='processing'",
-                               (time.time() + self.settings.lease_seconds, doc["id"]))
+                    db.execute(
+                        "UPDATE documents SET lease_until=? WHERE id=? AND status='processing'",
+                        (time.time() + self.settings.lease_seconds, doc["id"]),
+                    )
 
         thread = threading.Thread(target=heartbeat, daemon=True)
         thread.start()
@@ -46,8 +48,13 @@ class Worker:
             with connect(self.settings) as db:
                 db.execute(
                     "UPDATE documents SET status=?,stage=?,error=?,available_at=?,lease_until=0 WHERE id=?",
-                    ("failed" if terminal else "queued", "failed" if terminal else "retry_wait", code,
-                     time.time() + 3 * 2 ** doc["attempts"], doc["id"]),
+                    (
+                        "failed" if terminal else "queued",
+                        "failed" if terminal else "retry_wait",
+                        code,
+                        time.time() + 3 * 2 ** doc["attempts"],
+                        doc["id"],
+                    ),
                 )
         finally:
             heartbeat_stop.set()
@@ -58,8 +65,9 @@ class Worker:
         folder = self.settings.data_dir / "documents" / doc["id"]
         for number in range(1, doc["page_count"] + 1):
             with connect(self.settings) as db:
-                exists = db.execute("SELECT 1 FROM pages WHERE document_id=? AND number=?",
-                                    (doc["id"], number)).fetchone()
+                exists = db.execute(
+                    "SELECT 1 FROM pages WHERE document_id=? AND number=?", (doc["id"], number)
+                ).fetchone()
             if exists:
                 continue
             image = render_page(folder / "original", number)
@@ -69,12 +77,18 @@ class Worker:
             temporary.replace(folder / f"page-{number}.png")
             image.close()
             with connect(self.settings) as db:
-                db.execute("INSERT OR REPLACE INTO pages VALUES (?,?,?,?,?,?)",
-                           (doc["id"], number, page.text, json.dumps(page.words), page.width, page.height))
-                db.execute("UPDATE documents SET processed_pages=?,stage='ocr' WHERE id=?", (number, doc["id"]))
+                db.execute(
+                    "INSERT OR REPLACE INTO pages VALUES (?,?,?,?,?,?)",
+                    (doc["id"], number, page.text, json.dumps(page.words), page.width, page.height),
+                )
+                db.execute(
+                    "UPDATE documents SET processed_pages=?,stage='ocr' WHERE id=?", (number, doc["id"])
+                )
         with connect(self.settings) as db:
-            pages = [dict(row) for row in db.execute("SELECT * FROM pages WHERE document_id=? ORDER BY number",
-                                                   (doc["id"],))]
+            pages = [
+                dict(row)
+                for row in db.execute("SELECT * FROM pages WHERE document_id=? ORDER BY number", (doc["id"],))
+            ]
             db.execute("UPDATE documents SET stage='extracting' WHERE id=?", (doc["id"],))
         for page in pages:
             page["words"] = json.loads(page["words"])
@@ -82,15 +96,18 @@ class Worker:
         for offset in range(0, len(pages), 2):
             batch = offset // 2
             with connect(self.settings) as db:
-                saved = db.execute("SELECT payload FROM extractions WHERE document_id=? AND batch=?",
-                                   (doc["id"], batch)).fetchone()
+                saved = db.execute(
+                    "SELECT payload FROM extractions WHERE document_id=? AND batch=?", (doc["id"], batch)
+                ).fetchone()
             if saved:
                 extraction = Extraction.model_validate_json(saved["payload"])
             else:
-                extraction = self.extractor.extract(pages[offset:offset + 2])
+                extraction = self.extractor.extract(pages[offset : offset + 2])
                 with connect(self.settings) as db:
-                    db.execute("INSERT INTO extractions VALUES (?,?,?)",
-                               (doc["id"], batch, serialize_extraction(extraction)))
+                    db.execute(
+                        "INSERT INTO extractions VALUES (?,?,?)",
+                        (doc["id"], batch, serialize_extraction(extraction)),
+                    )
             extractions.append(extraction)
         document_type, fields = merge_extractions(extractions, pages, self.settings)
         with connect(self.settings) as db:
@@ -98,17 +115,29 @@ class Worker:
                 db.execute(
                     "INSERT OR IGNORE INTO fields(document_id,name,value,confidence,page,quote,boxes,needs_review) "
                     "VALUES (?,?,?,?,?,?,?,?)",
-                    (doc["id"], field["name"], field["value"], field["confidence"], field["page"], field["quote"],
-                     json.dumps(field["boxes"]), field["needs_review"]),
+                    (
+                        doc["id"],
+                        field["name"],
+                        field["value"],
+                        field["confidence"],
+                        field["page"],
+                        field["quote"],
+                        json.dumps(field["boxes"]),
+                        field["needs_review"],
+                    ),
                 )
-            db.execute("UPDATE documents SET stage='indexing',document_type=? WHERE id=?",
-                       (document_type, doc["id"]))
+            db.execute(
+                "UPDATE documents SET stage='indexing',document_type=? WHERE id=?", (document_type, doc["id"])
+            )
         self.index.index(doc, pages)
         with connect(self.settings) as db:
-            needs_review = db.execute("SELECT count(*) FROM fields WHERE document_id=? AND needs_review=1",
-                                      (doc["id"],)).fetchone()[0]
-            db.execute("UPDATE documents SET status=?,stage='complete',lease_until=0 WHERE id=?",
-                       ("needs_review" if needs_review else "ready", doc["id"]))
+            needs_review = db.execute(
+                "SELECT count(*) FROM fields WHERE document_id=? AND needs_review=1", (doc["id"],)
+            ).fetchone()[0]
+            db.execute(
+                "UPDATE documents SET status=?,stage='complete',lease_until=0 WHERE id=?",
+                ("needs_review" if needs_review else "ready", doc["id"]),
+            )
 
 
 def main():

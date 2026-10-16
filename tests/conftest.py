@@ -16,8 +16,16 @@ class MemoryIndex:
         self.rows = []
 
     def index(self, doc, pages):
-        self.rows = [{"documentId": doc["id"], "filename": doc["filename"], "page": p["number"],
-                      "text": p["text"], "_additional": {"score": 1}} for p in pages]
+        self.rows = [
+            {
+                "documentId": doc["id"],
+                "filename": doc["filename"],
+                "page": p["number"],
+                "text": p["text"],
+                "_additional": {"score": 1},
+            }
+            for p in pages
+        ]
 
     def search(self, question):
         return self.rows

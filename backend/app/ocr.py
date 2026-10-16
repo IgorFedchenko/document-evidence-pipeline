@@ -76,7 +76,10 @@ class TesseractOcr:
 
     def read(self, image: Image.Image, number: int) -> OcrPage:
         data = pytesseract.image_to_data(
-            image, lang=self.language, config="--psm 3", timeout=90,
+            image,
+            lang=self.language,
+            config="--psm 3",
+            timeout=90,
             output_type=pytesseract.Output.DICT,
         )
         words, lines = [], {}
@@ -86,13 +89,21 @@ class TesseractOcr:
                 continue
             line_id = (data["block_num"][i], data["par_num"][i], data["line_num"][i])
             lines.setdefault(line_id, []).append(text)
-            words.append({
-                "text": text, "confidence": max(0, float(data["conf"][i])) / 100,
-                "box": [data["left"][i] / image.width, data["top"][i] / image.height,
-                        data["width"][i] / image.width, data["height"][i] / image.height],
-            })
-        return OcrPage(number, "\n".join(" ".join(line) for line in lines.values()), words,
-                       image.width, image.height)
+            words.append(
+                {
+                    "text": text,
+                    "confidence": max(0, float(data["conf"][i])) / 100,
+                    "box": [
+                        data["left"][i] / image.width,
+                        data["top"][i] / image.height,
+                        data["width"][i] / image.width,
+                        data["height"][i] / image.height,
+                    ],
+                }
+            )
+        return OcrPage(
+            number, "\n".join(" ".join(line) for line in lines.values()), words, image.width, image.height
+        )
 
 
 class TextractOcr:
@@ -103,6 +114,7 @@ class TextractOcr:
             raise ValueError("Textract requires owner approval and ALLOW_PAID_OCR=true")
         if client is None:
             import boto3
+
             client = boto3.client("textract", region_name=settings.aws_region)
         self.client = client
 
@@ -116,8 +128,13 @@ class TextractOcr:
                 lines.append(block["Text"])
             if block["BlockType"] == "WORD":
                 box = block["Geometry"]["BoundingBox"]
-                words.append({"text": block["Text"], "confidence": block["Confidence"] / 100,
-                              "box": [box["Left"], box["Top"], box["Width"], box["Height"]]})
+                words.append(
+                    {
+                        "text": block["Text"],
+                        "confidence": block["Confidence"] / 100,
+                        "box": [box["Left"], box["Top"], box["Width"], box["Height"]],
+                    }
+                )
         return OcrPage(number, "\n".join(lines), words, image.width, image.height)
 
 

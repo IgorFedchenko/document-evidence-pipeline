@@ -6,7 +6,9 @@ from fastapi.testclient import TestClient
 
 
 def test_upload_hash_dedup_and_traversal_safe(client, invoice_bytes, settings):
-    first = client.post("/api/documents", files={"file": ("../../bill.pdf", invoice_bytes, "application/pdf")})
+    first = client.post(
+        "/api/documents", files={"file": ("../../bill.pdf", invoice_bytes, "application/pdf")}
+    )
     assert first.status_code == 201
     data = first.json()
     assert data["document"]["filename"] == "bill.pdf"
@@ -20,6 +22,7 @@ def test_upload_hash_dedup_and_traversal_safe(client, invoice_bytes, settings):
 def test_concurrent_uploads_converge(client, invoice_bytes):
     def upload(_):
         return client.post("/api/documents", files={"file": ("same.pdf", invoice_bytes)}).json()
+
     with ThreadPoolExecutor(max_workers=2) as pool:
         results = list(pool.map(upload, range(2)))
     assert len({r["document"]["id"] for r in results}) == 1
@@ -34,7 +37,12 @@ def test_invalid_and_oversized_files(client, settings):
 
 
 def test_csrf_and_host_rejected(client):
-    assert client.post("/api/ask", json={"question": "total?"}, headers={"Origin": "https://evil.example"}).status_code == 403
+    assert (
+        client.post(
+            "/api/ask", json={"question": "total?"}, headers={"Origin": "https://evil.example"}
+        ).status_code
+        == 403
+    )
     assert client.get("/api/documents", headers={"Host": "evil.example"}).status_code == 400
 
 
@@ -59,8 +67,10 @@ def test_review_has_validation_audit_and_optimistic_concurrency(client, invoice_
     doc = client.post("/api/documents", files={"file": ("bill.pdf", invoice_bytes)}).json()["document"]
     with connect(settings) as db:
         db.execute("UPDATE documents SET status='needs_review' WHERE id=?", (doc["id"],))
-        db.execute("INSERT INTO fields(document_id,name,value,confidence,quote,needs_review) VALUES(?,?,?,?,?,?)",
-                   (doc["id"], "total", "5.00", 0.4, "Total due: 5.00", 1))
+        db.execute(
+            "INSERT INTO fields(document_id,name,value,confidence,quote,needs_review) VALUES(?,?,?,?,?,?)",
+            (doc["id"], "total", "5.00", 0.4, "Total due: 5.00", 1),
+        )
     url = f"/api/documents/{doc['id']}/fields/total"
     assert client.patch(url, json={"value": "NaN", "version": 1}).status_code == 422
     assert client.patch(url, json={"value": "2400.00", "version": 1}).status_code == 200
@@ -70,4 +80,7 @@ def test_review_has_validation_audit_and_optimistic_concurrency(client, invoice_
     assert detail["fields"][0]["confidence"] == 0.4
     assert detail["fields"][0]["reviewed"] == 1
     with connect(settings) as db:
-        assert db.execute("SELECT old_value,new_value FROM review_events").fetchone()[:] == ("5.00", "2400.00")
+        assert db.execute("SELECT old_value,new_value FROM review_events").fetchone()[:] == (
+            "5.00",
+            "2400.00",
+        )

@@ -34,18 +34,32 @@ def verify_selection(selection: EvidenceSelection, hits: list[dict], allowed_ids
         if item.source_id > len(hits):
             raise ValueError("Selected source does not exist")
         hit = hits[item.source_id - 1]
-        if (hit["documentId"] not in allowed_ids or hit["page"] < 1
-                or not item.quote.strip() or item.quote not in hit["text"]):
+        if (
+            hit["documentId"] not in allowed_ids
+            or hit["page"] < 1
+            or not item.quote.strip()
+            or item.quote not in hit["text"]
+        ):
             raise ValueError("Selected citation is not exact eligible source evidence")
         identity = (item.source_id, item.quote)
         if identity in seen:
             continue
         seen.add(identity)
-        citations.append({"id": len(citations) + 1, "document_id": hit["documentId"],
-                          "filename": hit["filename"], "page": hit["page"], "quote": item.quote})
-    return {"answer": "\n\n".join(f'{c["quote"]} [{c["id"]}]' for c in citations)
-            or "I could not find supporting evidence in the processed documents.",
-            "citations": citations, "mode": "model_evidence"}
+        citations.append(
+            {
+                "id": len(citations) + 1,
+                "document_id": hit["documentId"],
+                "filename": hit["filename"],
+                "page": hit["page"],
+                "quote": item.quote,
+            }
+        )
+    return {
+        "answer": "\n\n".join(f"{c['quote']} [{c['id']}]" for c in citations)
+        or "I could not find supporting evidence in the processed documents.",
+        "citations": citations,
+        "mode": "model_evidence",
+    }
 
 
 class OllamaEvidenceSelector:
@@ -55,14 +69,26 @@ class OllamaEvidenceSelector:
 
     def select(self, question: str, hits: list[dict], allowed_ids: set[str]):
         eligible = [hit for hit in hits if hit["documentId"] in allowed_ids][:5]
-        passages = [{"source_id": i, "document_id": hit["documentId"], "page": hit["page"],
-                     "text": hit["text"][:3000]} for i, hit in enumerate(eligible, 1)]
+        passages = [
+            {
+                "source_id": i,
+                "document_id": hit["documentId"],
+                "page": hit["page"],
+                "text": hit["text"][:3000],
+            }
+            for i, hit in enumerate(eligible, 1)
+        ]
         source = json.dumps({"question": question[:2000], "passages": passages}, ensure_ascii=False)
         if len(source.encode()) > 24 * 1024:
             raise ValueError("Evidence selection input exceeds its budget")
         content, self.last_usage = chat_json(
-            self.settings, system=SYSTEM, source=source, schema=EvidenceSelection.model_json_schema(),
-            prompt_version="selection-v1", output_tokens=600, timeout=90,
+            self.settings,
+            system=SYSTEM,
+            source=source,
+            schema=EvidenceSelection.model_json_schema(),
+            prompt_version="selection-v1",
+            output_tokens=600,
+            timeout=90,
         )
         selection = EvidenceSelection.model_validate_json(content)
         # Validation uses precisely the bounded text the model saw.

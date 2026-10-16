@@ -9,7 +9,9 @@ from pydantic import BaseModel, ConfigDict, Field
 from app.config import Settings
 from app.inference import InferenceUsage, chat_json
 
-FieldName = Literal["document_number", "party_a", "party_b", "total", "currency", "effective_date", "due_date"]
+FieldName = Literal[
+    "document_number", "party_a", "party_b", "total", "currency", "effective_date", "due_date"
+]
 
 
 class Candidate(BaseModel):
@@ -87,9 +89,13 @@ class OllamaExtractor:
             "probability. Return no explanation outside the JSON."
         )
         content, self.last_usage = chat_json(
-            self.settings, system=system, source=f"<documents>\n{context}\n</documents>",
-            schema=Extraction.model_json_schema(), prompt_version="extraction-v3",
-            output_tokens=1800, timeout=240,
+            self.settings,
+            system=system,
+            source=f"<documents>\n{context}\n</documents>",
+            schema=Extraction.model_json_schema(),
+            prompt_version="extraction-v3",
+            output_tokens=1800,
+            timeout=240,
         )
         return Extraction.model_validate_json(content)
 
@@ -108,8 +114,8 @@ def ground(candidate: Candidate, pages: dict, threshold: float) -> dict:
             for end in range(start, min(start + 100, len(words))):
                 span = normalized(span + " " + words[end]["text"])
                 if span == quote:
-                    boxes = [w["box"] for w in words[start:end + 1]]
-                    confidences = [w["confidence"] for w in words[start:end + 1]]
+                    boxes = [w["box"] for w in words[start : end + 1]]
+                    confidences = [w["confidence"] for w in words[start : end + 1]]
                     break
                 if len(span) >= len(quote):
                     break
@@ -121,16 +127,26 @@ def ground(candidate: Candidate, pages: dict, threshold: float) -> dict:
         validate_value(candidate.name, candidate.value)
         if candidate.name == "total":
             amounts = re.findall(r"(?<![\w.])-?\d[\d,]*(?:\.\d+)?(?![\w.])", quote)
-            value_supported = any(Decimal(amount.replace(",", "")) == Decimal(candidate.value) for amount in amounts)
+            value_supported = any(
+                Decimal(amount.replace(",", "")) == Decimal(candidate.value) for amount in amounts
+            )
         else:
-            value_supported = bool(re.search(r"(?<!\w)" + re.escape(normalized(candidate.value)) + r"(?!\w)", quote))
+            value_supported = bool(
+                re.search(r"(?<!\w)" + re.escape(normalized(candidate.value)) + r"(?!\w)", quote)
+            )
     except ValueError:
         value_supported = False
     supported = supported and value_supported
     confidence = min(candidate.confidence, min(confidences, default=0)) if supported else 0
-    return {"name": candidate.name, "value": candidate.value, "confidence": confidence,
-            "page": candidate.page if page else None, "quote": candidate.quote if supported else "",
-            "boxes": boxes if supported else [], "needs_review": int(confidence < threshold)}
+    return {
+        "name": candidate.name,
+        "value": candidate.value,
+        "confidence": confidence,
+        "page": candidate.page if page else None,
+        "quote": candidate.quote if supported else "",
+        "boxes": boxes if supported else [],
+        "needs_review": int(confidence < threshold),
+    }
 
 
 def merge_extractions(extractions: list[Extraction], pages: list[dict], settings: Settings):
@@ -152,8 +168,15 @@ def merge_extractions(extractions: list[Extraction], pages: list[dict], settings
     if document_type == "invoice":
         required |= {"document_number", "due_date"}
     for name in required - fields.keys():
-        fields[name] = {"name": name, "value": None, "confidence": 0, "page": None,
-                        "quote": "", "boxes": [], "needs_review": 1}
+        fields[name] = {
+            "name": name,
+            "value": None,
+            "confidence": 0,
+            "page": None,
+            "quote": "",
+            "boxes": [],
+            "needs_review": 1,
+        }
     for name in conflicts:
         fields[name]["needs_review"] = 1
     return document_type, list(fields.values())
