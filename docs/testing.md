@@ -2,25 +2,37 @@
 
 ## Reproduce the acceptance flow
 
-Install the prerequisites in the README, then run `./scripts/start.sh` once to prepare dependencies.
-Stop the app with Ctrl-C. Install a browser if it is absent:
+Install the prerequisites in the README. The verifier prepares Python development dependencies before
+linting, then prepares frontend dependencies during startup; a prior demo run is unnecessary.
+Install the browser separately if it is absent (install frontend dependencies first on a fresh clone):
 
 ```sh
 cd frontend
+npm ci --no-fund --no-audit
 npx playwright install chromium
 cd ..
 ./scripts/verify.sh
 ```
 
-The verification script checks Python formatting/lint, starts a uniquely named real Weaviate container,
-runs Python tests, typechecks/builds React, starts the recorded app and runs Playwright. Its default ports
+The verification script runs two sequential stages: Python formatting/lint and tests, then Playwright.
+Each stage typechecks/builds React and starts a recorded app with fresh data and its own uniquely named
+real Weaviate container. Its default ports
 are app 8018 and index 8098; set `APP_PORT` and `VECTOR_PORT` to unused loopback ports if needed.
-`TEST_ARTIFACT_DIR` can select an external directory for JUnit, browser reports/video, server logs and a
-screenshot. Otherwise it uses an OS temporary directory. Use a fresh output directory for each run.
+`TEST_ARTIFACT_DIR` can select an external directory; otherwise the script uses an OS temporary directory.
+Use a fresh output directory for each run. `python/python.xml` contains JUnit results; `browser/browser/`
+and `browser/report/` contain browser output and the HTML report. The browser stage also writes
+`browser/workspace.png`, `browser/cover.png` and, when FFmpeg is installed, `browser/walkthrough.gif`.
+Each stage retains its own `server.log`, `health.json` and `source-manifest.json` with the source HEAD
+and file hashes captured before startup.
 
-On hosts with `studio-heavy-run`, the script queues the entire lifecycle once. Do not wrap it again
-or launch detached tests that outlive its queue owner. It stops its own app and removes only its unique
-Compose project's temporary vector volume. It leaves other workspaces, volumes and models untouched.
+On hosts with `studio-heavy-run`, each stage takes a fresh FIFO ticket. Run `verify.sh` directly;
+it rejects an outer Studio queue owner, and direct stage scripts require admission by the heavy queue.
+The Python stage must pass and finish cleanup before the browser stage is queued. Each ticket covers
+setup, one test suite and cleanup: its app stops and only its unique Compose project's temporary vector
+volume is removed before the ticket is released. Startup runs in an owned process group; cleanup stops
+its preparation/app descendants before Compose teardown, including on startup failure or cancellation.
+No tests or services remain while the next stage waits.
+Hosts without the wrapper run the same stages directly. Other workspaces, volumes and models are untouched.
 
 ## What the checks establish
 

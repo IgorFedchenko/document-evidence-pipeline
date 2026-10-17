@@ -125,17 +125,21 @@ Read [architecture](docs/architecture.md), [key decisions](docs/key-decisions.md
 
 ## Verification
 
-After the first start has installed dependencies, stop the app if desired and run:
+With the prerequisites installed and any running demo stopped, run:
 
 ```sh
 ./scripts/verify.sh
 ```
 
-This creates a separate temporary Weaviate project and fresh app data, runs the Python suite with real
-OCR and index integration, builds React, and executes Playwright against the real recorded-mode app.
+This runs Python and browser stages sequentially, each with a separate temporary Weaviate project,
+fresh app data and a React build. The Python suite uses real OCR and index integration; Playwright
+uses the real recorded-mode app. On hosts with `studio-heavy-run`, each stage gets its own queue ticket;
+run this command directly without an outer wrapper.
 There are no browser API-route mocks. It stops its own processes/containers and removes only its own
-temporary vector volume. Reports, video and screenshot go outside the repository by default.
-Install Playwright Chromium once if needed: `cd frontend && npx playwright install chromium`.
+temporary vector volume before the next stage starts. Reports, video and screenshots go outside the
+repository by default, in separate `python/` and `browser/` directories.
+The verifier prepares Python development and frontend dependencies. Install Playwright Chromium once
+if needed: `cd frontend && npm ci --no-fund --no-audit && npx playwright install chromium`.
 
 GitHub Actions is **manual-only and guarded to public repositories**. It remains disabled after publication;
 local evidence is the acceptance record. No hosted CI run is claimed.

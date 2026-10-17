@@ -17,7 +17,8 @@ code, documents, names, credentials or confidential material. Preserve contribut
 - `./scripts/start.sh`: default recorded fixture demo; real Tesseract/SQLite/worker/Weaviate, authored
   extraction and hash-vector doubles; no model downloads or inference.
 - `./scripts/verify.sh`: full isolated Python/integration/build/browser acceptance. It automatically
-  uses `studio-heavy-run` where installed, covering the full lifecycle without nested queue locks.
+  uses two sequential `studio-heavy-run` tickets where installed: Python, then browser. Each stage
+  owns setup and cleanup; run the coordinator directly without an outer queue wrapper.
 - `uv run --frozen ruff check backend scripts tests` and `uv run --frozen ruff format --check backend scripts tests`.
 - `uv run --frozen pytest -q`: unit/OCR suite; index integration requires `TEST_WEAVIATE_URL`.
 - `npm run build --prefix frontend`; `npm run e2e --prefix frontend` requires a running app.

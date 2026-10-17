@@ -37,7 +37,8 @@ separate prevents a successful adapter experiment from becoming an unsupported U
 
 ## Reproducible local acceptance
 
-One verification script owns fresh app data and a uniquely named temporary search server. Python
-checks, the frontend build and the browser run share one host queue slot; cleanup finishes before that
-slot is released. Raw logs and recordings stay outside the repository. The selected screenshot/GIF
+One verification coordinator runs Python and browser stages sequentially, each with fresh app data and
+a uniquely named temporary search server. Each stage takes its own host queue ticket, builds the frontend,
+runs one suite and finishes cleanup before releasing its slot. No services remain between tickets.
+Raw logs and recordings stay outside the repository. The selected screenshot/GIF
 contain only synthetic data. Private hosted Actions are disabled; acceptance is reproduced locally.
