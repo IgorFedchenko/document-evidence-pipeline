@@ -15,7 +15,7 @@ authored extraction recordings and deterministic hash vectors. It makes no model
 
 ![Recorded fixture walkthrough: upload, inspect, review and find cited evidence](docs/screenshots/walkthrough.gif)
 
-## Try it locally
+## Run locally
 
 You need Python 3.12–3.13, [uv](https://docs.astral.sh/uv/), Node.js 22+, Docker with Compose v2, and
 Tesseract with English language data (`brew install tesseract` on macOS, or
@@ -54,7 +54,7 @@ The helper scripts automatically join `studio-heavy-run` when installed on a sha
 An optional workspace token can be set through `ACCESS_TOKEN`; the browser uses an HttpOnly,
 SameSite cookie. See [configuration and optional adapters](docs/architecture.md#runtime-modes).
 
-## How it works
+## Architecture
 
 ```mermaid
 flowchart LR
@@ -123,7 +123,7 @@ use authored recordings and must not be read as a new live-model measurement.
 Read [architecture](docs/architecture.md), [key decisions](docs/key-decisions.md) and
 [testing](docs/testing.md) for the implementation boundaries and reproducible checks.
 
-## Verify locally
+## Verification
 
 After the first start has installed dependencies, stop the app if desired and run:
 
@@ -140,7 +140,7 @@ Install Playwright Chromium once if needed: `cd frontend && npx playwright insta
 GitHub Actions is **manual-only and guarded to public repositories**. It remains disabled after publication;
 local evidence is the acceptance record. No hosted CI run is claimed.
 
-## Limits
+## Limitations
 
 - English printed documents; complex tables, handwriting, multilingual scans and arbitrary document
   layouts need further evaluation. The schema has seven fields, without line items or legal analysis.
