@@ -85,6 +85,15 @@ The worker checkpoints OCR pages and two-page extraction batches. Failed work re
 backoff, then becomes a visible failure with explicit Retry. Content hashes deduplicate uploads;
 deterministic index IDs make upserts repeatable. Review uses optimistic versions and an audit trail.
 
+## Integration status
+
+| Status | Components |
+| --- | --- |
+| Runs locally | FastAPI/worker, React, Tesseract, SQLite and Weaviate. |
+| Recorded doubles | Fixture-specific extraction responses and hash-vector embeddings. |
+| Optional, unconnected | Ollama extraction, BGE embeddings and standalone model selector; historical local measurement below is separate. |
+| Disabled | Cloud Textract/paid OCR. No hosted service or cloud model is connected. |
+
 ## What has actually been measured
 
 A historical direct-adapter run at commit `93e347038d2237421e23393ec9abe86115d1be85` used real local
@@ -128,8 +137,8 @@ There are no browser API-route mocks. It stops its own processes/containers and 
 temporary vector volume. Reports, video and screenshot go outside the repository by default.
 Install Playwright Chromium once if needed: `cd frontend && npx playwright install chromium`.
 
-GitHub Actions is **manual-only and guarded to public repositories**. It is disabled for this private
-repository; local evidence is the acceptance record. No hosted CI run is claimed.
+GitHub Actions is **manual-only and guarded to public repositories**. It remains disabled after publication;
+local evidence is the acceptance record. No hosted CI run is claimed.
 
 ## Limits
 
